@@ -5,6 +5,7 @@ import curses
 import random
 import time
 from itertools import cycle
+from os import listdir
 
 from curses_tools import draw_frame, get_frame_size, read_controls
 from explosion import explode
@@ -22,20 +23,20 @@ NEXT_YEAR_THRESHOLD = 1.5
 JET_LENGTH = 3
 MAX_TEXT_LENGTH = 60
 
-ROCKET_FRAME_1 = open('frames/rocket_frame_1.txt').read()
-ROCKET_FRAME_2 = open('frames/rocket_frame_2.txt').read()
-ROCKET_FRAMES = [
-    ROCKET_FRAME_1, ROCKET_FRAME_1, ROCKET_FRAME_2, ROCKET_FRAME_2
+rocket_frame_1 = open('frames/rocket/rocket_frame_1.txt').read()
+rocket_frame_2 = open('frames/rocket/rocket_frame_2.txt').read()
+rocket_frames = [
+    rocket_frame_1, rocket_frame_2, rocket_frame_2, rocket_frame_2
 ]
-TRASH_SMALL = open('frames/trash_small.txt').read()
-TRASH_LARGE = open('frames/trash_large.txt').read()
-TRASH_XL = open('frames/trash_xl.txt').read()
-LAMP = open('frames/lamp.txt').read()
-HUBBLE = open('frames/hubble.txt').read()
-DUCK = open('frames/duck.txt').read()
-GARBAGE_FRAMES = [TRASH_SMALL, TRASH_LARGE, TRASH_XL, LAMP, HUBBLE, DUCK]
-GAME_OVER_SIGN = open('frames/game_over.txt').read()
-ROCKET_ROWS, ROCKET_COLS = get_frame_size(ROCKET_FRAMES[0])
+ROCKET_ROWS, ROCKET_COLS = get_frame_size(rocket_frames[0])
+
+garbage_frames = []
+for filename in listdir('frames/trash'):
+    print('frames/trash/' + filename)
+    frame = open('frames/trash/' + filename).read()
+    garbage_frames.append(frame)
+
+game_over_sign = open('frames/game_over.txt').read()
 
 PHRASES = {
     1957: "First Sputnik",
@@ -61,17 +62,19 @@ year = STARTING_YEAR
 def draw(canvas):
     curses.curs_set(False)
     canvas.nodelay(True)
+    canvas.border()
+
     global MAX_ROW, MAX_COLUMN
     MAX_ROW, MAX_COLUMN = canvas.getmaxyx()
     text_window = canvas.subwin(MAX_ROW - 3, MAX_COLUMN-MAX_TEXT_LENGTH)
+    text_window.border()
 
-    global INIT_ROCKET_ROW, INIT_ROCKET_COLUMN
-    INIT_ROCKET_ROW = MAX_ROW/2
-    INIT_ROCKET_COLUMN = MAX_COLUMN/2
+    init_rocket_row = MAX_ROW/2
+    init_rocket_col = MAX_COLUMN/2
 
     spawn_stars(canvas)
 
-    spaceship = animate_spaceship(canvas, ROCKET_FRAMES)
+    spaceship = animate_spaceship(canvas, rocket_frames, init_rocket_row, init_rocket_col)
     garbage_filler = fill_orbit_with_garbage(canvas)
     year_counter = show_year(canvas)
     coroutines.extend([spaceship, garbage_filler, year_counter])
@@ -85,8 +88,6 @@ def draw(canvas):
             except StopIteration:
                 coroutines.remove(coroutine)
 
-        canvas.border()
-        text_window.border()
         canvas.refresh()
         time.sleep(TIC_TIMEOUT)
         seconds_since_new_year = keep_time(seconds_since_new_year)
@@ -97,7 +98,8 @@ def spawn_stars(canvas):
         row = random.randint(0 + PADDING, MAX_ROW - PADDING - STAR_SIZE)
         column = random.randint(0 + PADDING, MAX_COLUMN - PADDING - STAR_SIZE)
         sign = random.choice(SYMBOLS)
-        star = blink(canvas, row, column, sign)
+        offset_ticks = random.randint(0, 5)
+        star = blink(canvas, row, column, offset_ticks, sign)
         coroutines.append(star)
 
 
@@ -110,14 +112,13 @@ def keep_time(seconds_since_new_year):
     return seconds_since_new_year
 
 
-async def blink(canvas, row, column, symbol='*'):
+async def blink(canvas, row, column, offset_ticks, symbol='*'):
     while True:
         canvas.addstr(row, column, symbol, curses.A_DIM)
         await sleep(20)
 
         canvas.addstr(row, column, symbol, curses.A_DIM)
-        ticks = random.randint(0, 5)
-        await sleep(ticks)
+        await sleep(offset_ticks)
 
         canvas.addstr(row, column, symbol)
         await sleep(3)
@@ -165,9 +166,7 @@ async def fire(canvas,
         column += columns_speed
 
 
-async def animate_spaceship(canvas, frames):
-    row = INIT_ROCKET_ROW
-    column = INIT_ROCKET_COLUMN
+async def animate_spaceship(canvas, frames, row, column):
     row_speed = column_speed = 0
 
     rocket_rows, rocket_cols = get_frame_size(frames[0])
@@ -242,7 +241,7 @@ async def fill_orbit_with_garbage(canvas):
             await asyncio.sleep(0)
             continue
 
-        garbage_frame = random.choice(GARBAGE_FRAMES)
+        garbage_frame = random.choice(garbage_frames)
         _, cols = get_frame_size(garbage_frame)
         garbage_position = random.randint(1, MAX_COLUMN - cols)
         garbage = fly_garbage(canvas, garbage_position, garbage_frame)
@@ -281,12 +280,12 @@ async def show_year(canvas):
 
 async def show_gameover(canvas):
     while True:
-        rows, cols = get_frame_size(GAME_OVER_SIGN)
+        rows, cols = get_frame_size(game_over_sign)
         row, col = MAX_ROW/2 - rows/2, MAX_COLUMN/2 - cols/2
 
-        draw_frame(canvas, row, col, GAME_OVER_SIGN)
+        draw_frame(canvas, row, col, game_over_sign)
         await asyncio.sleep(0)
-        draw_frame(canvas, row, col, GAME_OVER_SIGN, negative=True)
+        draw_frame(canvas, row, col, game_over_sign, negative=True)
 
 
 if __name__ == '__main__':
