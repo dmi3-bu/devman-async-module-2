@@ -20,24 +20,6 @@ STAR_SIZE = 1
 STARTING_YEAR = 1957
 CANNON_UNLOCKED_YEAR = 2020
 NEXT_YEAR_THRESHOLD = 1.5
-JET_LENGTH = 3
-MAX_TEXT_LENGTH = 60
-
-rocket_frame_1 = open('frames/rocket/rocket_frame_1.txt').read()
-rocket_frame_2 = open('frames/rocket/rocket_frame_2.txt').read()
-rocket_frames = [
-    rocket_frame_1, rocket_frame_2, rocket_frame_2, rocket_frame_2
-]
-ROCKET_ROWS, ROCKET_COLS = get_frame_size(rocket_frames[0])
-
-garbage_frames = []
-for filename in listdir('frames/trash'):
-    print('frames/trash/' + filename)
-    frame = open('frames/trash/' + filename).read()
-    garbage_frames.append(frame)
-
-game_over_sign = open('frames/game_over.txt').read()
-
 PHRASES = {
     1957: "First Sputnik",
     1961: "Gagarin flew!",
@@ -57,6 +39,31 @@ global obstacles_in_last_collisions
 obstacles_in_last_collisions = []
 global year
 year = STARTING_YEAR
+max_text_length = len(max(PHRASES.values(), key=len)) + 20
+
+
+def init_rocket_frames():
+    rocket_frame_1 = open('frames/rocket/rocket_frame_1.txt').read()
+    rocket_frame_2 = open('frames/rocket/rocket_frame_2.txt').read()
+    return [rocket_frame_1, rocket_frame_2, rocket_frame_2, rocket_frame_2]
+
+
+rocket_frames = init_rocket_frames()
+
+
+def measure_jet_length():
+    rocket_lines = rocket_frames[0].splitlines()
+    jet_start = next((i for i, line in enumerate(rocket_lines) if '(' in line or ')' in line))
+    jet_end = len(rocket_lines)
+    return jet_end - jet_start
+
+
+def garbage_frames():
+    frames = []
+    for filename in listdir('frames/trash'):
+        frame = open('frames/trash/' + filename).read()
+        frames.append(frame)
+    return frames
 
 
 def draw(canvas):
@@ -64,13 +71,13 @@ def draw(canvas):
     canvas.nodelay(True)
     canvas.border()
 
-    global MAX_ROW, MAX_COLUMN
-    MAX_ROW, MAX_COLUMN = canvas.getmaxyx()
-    text_window = canvas.subwin(MAX_ROW - 3, MAX_COLUMN-MAX_TEXT_LENGTH)
+    global max_row, max_column
+    max_row, max_column = canvas.getmaxyx()
+    text_window = canvas.subwin(max_row - 3, max_column-max_text_length)
     text_window.border()
 
-    init_rocket_row = MAX_ROW/2
-    init_rocket_col = MAX_COLUMN/2
+    init_rocket_row = max_row/2
+    init_rocket_col = max_column/2
 
     spawn_stars(canvas)
 
@@ -95,8 +102,8 @@ def draw(canvas):
 
 def spawn_stars(canvas):
     for _ in range(STARS_COUNT):
-        row = random.randint(0 + PADDING, MAX_ROW - PADDING - STAR_SIZE)
-        column = random.randint(0 + PADDING, MAX_COLUMN - PADDING - STAR_SIZE)
+        row = random.randint(0 + PADDING, max_row - PADDING - STAR_SIZE)
+        column = random.randint(0 + PADDING, max_column - PADDING - STAR_SIZE)
         sign = random.choice(SYMBOLS)
         offset_ticks = random.randint(0, 5)
         star = blink(canvas, row, column, offset_ticks, sign)
@@ -153,7 +160,7 @@ async def fire(canvas,
 
     curses.beep()
 
-    while 0 < row < MAX_ROW - PADDING and 0 < column < MAX_COLUMN - PADDING:
+    while 0 < row < max_row - PADDING and 0 < column < max_column - PADDING:
         for obstacle in obstacles:
             if obstacle.has_collision(row, column):
                 obstacles_in_last_collisions.append(obstacle)
@@ -170,14 +177,15 @@ async def animate_spaceship(canvas, frames, row, column):
     row_speed = column_speed = 0
 
     rocket_rows, rocket_cols = get_frame_size(frames[0])
+    jet_length = measure_jet_length()
 
     for frame in cycle(frames):
         row_dir, column_dir, space_pr = read_controls(canvas)
         row_speed, column_speed = update_speed(row_speed, column_speed, row_dir, column_dir)
         row, column = row + row_speed, column + column_speed
 
-        row = limit_boundary(row, 0 + PADDING, MAX_ROW - ROCKET_ROWS - PADDING)
-        column = limit_boundary(column, 0 + PADDING, MAX_COLUMN - ROCKET_COLS - PADDING)
+        row = limit_boundary(row, 0 + PADDING, max_row - rocket_rows - PADDING)
+        column = limit_boundary(column, 0 + PADDING, max_column - rocket_cols - PADDING)
 
         if space_pr and year >= CANNON_UNLOCKED_YEAR:
             shot = fire(canvas, row - 1, column + 2)
@@ -188,7 +196,7 @@ async def animate_spaceship(canvas, frames, row, column):
         draw_frame(canvas, row, column, frame, True)
 
         for obstacle in obstacles:
-            if obstacle.has_collision(row, column, rocket_rows, rocket_cols - JET_LENGTH):
+            if obstacle.has_collision(row, column, rocket_rows, rocket_cols - jet_length):
                 gameover_sign = show_gameover(canvas)
                 coroutines.append(gameover_sign)
                 return
@@ -241,9 +249,9 @@ async def fill_orbit_with_garbage(canvas):
             await asyncio.sleep(0)
             continue
 
-        garbage_frame = random.choice(garbage_frames)
+        garbage_frame = random.choice(garbage_frames())
         _, cols = get_frame_size(garbage_frame)
-        garbage_position = random.randint(1, MAX_COLUMN - cols)
+        garbage_position = random.randint(1, max_column - cols)
         garbage = fly_garbage(canvas, garbage_position, garbage_frame)
         coroutines.append(garbage)
         await sleep(delay_ticks)
@@ -271,17 +279,18 @@ async def show_year(canvas):
         text = f"      Year {str(year)}    "
         if news := PHRASES.get(year):
             text = news + text
-        text = text.rjust(MAX_TEXT_LENGTH, ' ')
+        text = text.rjust(max_text_length, ' ')
 
-        draw_frame(canvas, MAX_ROW-2, MAX_COLUMN-MAX_TEXT_LENGTH, text)
+        draw_frame(canvas, max_row-2, max_column-max_text_length, text)
         await asyncio.sleep(0)
-        draw_frame(canvas, MAX_ROW-2, MAX_COLUMN-MAX_TEXT_LENGTH, text, negative=True)
+        draw_frame(canvas, max_row-2, max_column-max_text_length, text, negative=True)
 
 
 async def show_gameover(canvas):
+    game_over_sign = open('frames/game_over.txt').read()
     while True:
         rows, cols = get_frame_size(game_over_sign)
-        row, col = MAX_ROW/2 - rows/2, MAX_COLUMN/2 - cols/2
+        row, col = max_row/2 - rows/2, max_column/2 - cols/2
 
         draw_frame(canvas, row, col, game_over_sign)
         await asyncio.sleep(0)
